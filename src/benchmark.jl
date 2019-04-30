@@ -45,8 +45,6 @@ function Shootout(prob,setups;appxsol=nothing,names=nothing,error_estimate=:fina
   for i in eachindex(setups)
     sol = solve(prob,setups[i][:alg];timeseries_errors=timeseries_errors,
     dense_errors = dense_errors,kwargs...,setups[i]...) # Compile and get result
-    sol = solve(prob,setups[i][:alg],sol.u,sol.t,sol.k;timeseries_errors=timeseries_errors,
-    dense_errors = dense_errors,kwargs...,setups[i]...) # Compile and get result
     fails = 0
     local benchable
     @label START
@@ -69,6 +67,8 @@ function Shootout(prob,setups;appxsol=nothing,names=nothing,error_estimate=:fina
       errors[i] = sol.errors[error_estimate]
       solutions[i] = sol
     end
+    BenchmarkTools.warmup(benchable)
+    BenchmarkTools.tune!(benchable)
     bench = run(benchable, samples=numruns, seconds=seconds)
     t = benchtime(bench)
     effs[i] = 1/(errors[i]*t)
@@ -169,14 +169,8 @@ function WorkPrecision(prob,alg,abstols,reltols,dts=nothing;
       sol = solve(prob,alg;kwargs...,abstol=abstols[i],
       reltol=reltols[i],timeseries_errors=timeseries_errors,
       dense_errors = dense_errors) # Compile and get result
-      sol = solve(prob,alg,sol.u,sol.t,sol.k;kwargs...,abstol=abstols[i],
-      reltol=reltols[i],timeseries_errors=timeseries_errors,
-      dense_errors = dense_errors) # Compile and get result
     else
       sol = solve(prob,alg;kwargs...,abstol=abstols[i],
-      reltol=reltols[i],dt=dts[i],timeseries_errors=timeseries_errors,
-      dense_errors = dense_errors) # Compile and get result
-      sol = solve(prob,alg,sol.u,sol.t,sol.k;kwargs...,abstol=abstols[i],
       reltol=reltols[i],dt=dts[i],timeseries_errors=timeseries_errors,
       dense_errors = dense_errors) # Compile and get result
     end
@@ -214,6 +208,8 @@ function WorkPrecision(prob,alg,abstols,reltols,dts=nothing;
       fails > 4 && rethrow()
       @goto START
     end
+    BenchmarkTools.warmup(benchable)
+    BenchmarkTools.tune!(benchable)
     bench = run(benchable, samples=numruns, seconds=seconds)
     times[i] = benchtime(bench)
   end
@@ -254,9 +250,7 @@ end
     brownian_values = cumsum([[zeros(size(prob.u0))];[sqrt(test_dt)*randn(size(prob.u0)) for i in 1:length(t)-1]])
     brownian_values2 = cumsum([[zeros(size(prob.u0))];[sqrt(test_dt)*randn(size(prob.u0)) for i in 1:length(t)-1]])
     np = NoiseGrid(t,brownian_values,brownian_values2)
-    _prob = SDEProblem(prob.f,prob.g,prob.u0,prob.tspan,prob.p,
-                       noise=np,
-                       noise_rate_prototype=prob.noise_rate_prototype);
+    _prob = remake(prob,noise=np);
     true_sol = solve(_prob,appxsol_setup[:alg];kwargs...,appxsol_setup...)
   else
     _prob = prob
@@ -337,23 +331,25 @@ function WorkPrecisionSet(prob::AbstractRODEProblem,abstols,reltols,setups,test_
   end
 
   # precompile
+  local _sol
   for k in 1:N
     if !haskey(setups[k],:dts)
-      sol = solve(prob,setups[k][:alg];
+      _sol = solve(prob,setups[k][:alg];
             kwargs...,
             abstol=abstols[1],
             reltol=reltols[1],
-            timeseries_errors=timeseries_errors,
-            dense_errors = dense_errors)
+            timeseries_errors=false,
+            dense_errors = false)
     else
-      sol = solve(prob,setups[k][:alg];
+      _sol = solve(prob,setups[k][:alg];
             kwargs...,abstol=abstols[1],
             reltol=reltols[1],dt=setups[k][:dts][1],
-            timeseries_errors=timeseries_errors,
-            dense_errors = dense_errors)
+            timeseries_errors=false,
+            dense_errors = false)
     end
   end
   GC.gc()
+  x = isempty(_sol.t) ? 0 : round(Int,mean(_sol.t) - sum(_sol.t)/length(_sol.t))
   # Now time it
   for k in 1:N
     for j in 1:M
@@ -373,7 +369,7 @@ function WorkPrecisionSet(prob::AbstractRODEProblem,abstols,reltols,setups,test_
                 dense_errors = false)
         end
       end
-      times[j,k] = mean(time_tmp)
+      times[j,k] = mean(time_tmp) + x
       GC.gc()
     end
   end
