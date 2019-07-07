@@ -1,9 +1,6 @@
-__precompile__()
-
 module DiffEqDevTools
 
-using DiffEqBase, RecipesBase, RecursiveArrayTools, DiffEqPDEBase,
-      DiffEqMonteCarlo, DiffEqNoiseProcess
+using DiffEqBase, RecipesBase, RecursiveArrayTools, DiffEqPDEBase, DiffEqNoiseProcess
 
 using LinearAlgebra, Distributed
 
@@ -25,9 +22,6 @@ const WEAK_TIMESERIES_ERRORS = Set([:weak_l2,:weak_l∞])
 const WEAK_DENSE_ERRORS = Set([:weak_L2,:weak_L∞])
 const WEAK_ERRORS = union(Set([:weak_final]),
                           WEAK_TIMESERIES_ERRORS,WEAK_DENSE_ERRORS)
-
-parameterless_type(T::Type) = Base.typename(T).wrapper
-parameterless_type(x) = parameterless_type(typeof(x))
 
 include("benchmark.jl")
 include("convergence.jl")
